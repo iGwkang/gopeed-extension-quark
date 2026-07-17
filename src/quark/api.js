@@ -18,13 +18,17 @@ function apiMessage(body, fallback) {
 }
 
 function assertApiSuccess(body, fallback) {
-  if (body && (body.code === 0 || body.code === undefined)) return body.data;
+  if (body?.code === 0) return body.data;
   throw new Error(apiMessage(body, fallback));
 }
 
-export async function apiGetToken(shareId, passcode) {
+export async function apiGetToken(
+  shareId,
+  passcode,
+  request = quarkRequest,
+) {
   const url = `${PAN_ORIGIN}/1/clouddrive/share/sharepage/token?pr=ucpro&fr=pc`;
-  const body = await quarkRequest(url, 'POST', {
+  const body = await request(url, 'POST', {
     pwd_id: shareId,
     passcode: passcode || '',
   });
@@ -35,9 +39,9 @@ export async function apiGetToken(shareId, passcode) {
   if (body.code === 31002) {
     throw new Error('分享链接已失效或被取消');
   }
-  if (body.code !== 0 && body.code !== undefined) {
+  if (body?.code !== 0) {
     throw new Error(
-      `提取码错误，请检查链接中的 ?pwd=：${apiMessage(body, `接口错误 ${body.code}`)}`,
+      `提取码错误，请检查链接中的 ?pwd=：${apiMessage(body, `接口错误 ${body?.code ?? '未知'}`)}`,
     );
   }
   return body.data;
@@ -48,6 +52,7 @@ export async function apiGetDetailPage(
   stoken,
   pdirFid = '0',
   page = 1,
+  request = quarkRequest,
 ) {
   const url =
     `${PAN_ORIGIN}/1/clouddrive/share/sharepage/detail` +
@@ -57,7 +62,7 @@ export async function apiGetDetailPage(
     `&_page=${page}&_size=${PAGE_SIZE}` +
     '&_sort=file_type:asc,updated_at:desc';
   const data = assertApiSuccess(
-    await quarkRequest(url, 'GET'),
+    await request(url, 'GET'),
     '获取分享文件列表失败',
   );
   const list = data?.list || [];
@@ -76,10 +81,11 @@ export async function apiSaveFiles(
   fidList,
   fidTokenList,
   toPdirFid,
+  request = quarkRequest,
 ) {
   const url = `${DRIVE_BASE}/1/clouddrive/share/sharepage/save?pr=ucpro&fr=pc`;
   const data = assertApiSuccess(
-    await quarkRequest(url, 'POST', {
+    await request(url, 'POST', {
       fid_list: fidList,
       fid_token_list: fidTokenList,
       to_pdir_fid: toPdirFid,
@@ -95,7 +101,11 @@ export async function apiSaveFiles(
   return taskId;
 }
 
-export async function apiPollTask(taskId, fileCount = 1) {
+export async function apiPollTask(
+  taskId,
+  fileCount = 1,
+  request = quarkRequest,
+) {
   const maxAttempts = Math.max(
     TASK_MIN_POLL_ATTEMPTS,
     Math.ceil(Math.max(1, fileCount) / 10) * 5,
@@ -106,11 +116,15 @@ export async function apiPollTask(taskId, fileCount = 1) {
 
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     const data = assertApiSuccess(
-      await quarkRequest(url, 'GET'),
+      await request(url, 'GET'),
       '查询转存任务失败',
     );
     if (data?.status === 2) {
-      return data.save_as?.save_as_top_fids || [];
+      const fids = data.save_as?.save_as_top_fids || [];
+      if (fileCount > 0 && fids.length === 0) {
+        throw new Error('转存任务已完成，但响应中缺少文件 ID');
+      }
+      return fids;
     }
     if (data?.status === 3) {
       throw new Error('转存失败，云端空间满或触发风控');
@@ -120,9 +134,9 @@ export async function apiPollTask(taskId, fileCount = 1) {
   throw new Error('转存任务等待超时，请稍后重试');
 }
 
-export async function apiGetDownloadLinks(fids) {
+export async function apiGetDownloadLinks(fids, request = quarkRequest) {
   const url = `${DRIVE_BASE}/1/clouddrive/file/download?pr=ucpro&fr=pc`;
-  const body = await quarkRequest(url, 'POST', { fids });
+  const body = await request(url, 'POST', { fids });
   if (body.code === 23018) {
     throw new Error('获取下载链接失败：账号触发风控，请稍后重试');
   }
@@ -130,12 +144,12 @@ export async function apiGetDownloadLinks(fids) {
   return Array.isArray(data) ? data : data?.list || [];
 }
 
-export async function apiDeleteFiles(fids) {
+export async function apiDeleteFiles(fids, request = quarkRequest) {
   if (!fids?.length) return;
   const url = `${DRIVE_BASE}/1/clouddrive/file/delete?pr=ucpro&fr=pc`;
   try {
     assertApiSuccess(
-      await quarkRequest(url, 'POST', {
+      await request(url, 'POST', {
         action_type: 2,
         filelist: fids,
         exclude_fids: [],
@@ -147,13 +161,13 @@ export async function apiDeleteFiles(fids) {
   }
 }
 
-export async function apiGetAvailableSpace() {
+export async function apiGetAvailableSpace(request = quarkRequest) {
   const url =
     `${DRIVE_BASE}/1/clouddrive/member?pr=ucpro&fr=pc` +
     '&fetch_subscribe=true&fetch_identity=true';
   try {
     const data = assertApiSuccess(
-      await quarkRequest(url, 'GET'),
+      await request(url, 'GET'),
       '查询网盘可用空间失败',
     );
     const total = Number(data?.total_capacity);
@@ -166,22 +180,26 @@ export async function apiGetAvailableSpace() {
   }
 }
 
-export async function apiListDir(pdirFid) {
+export async function apiListDir(pdirFid, request = quarkRequest) {
   const url =
     `${DRIVE_BASE}/1/clouddrive/file/sort?pr=ucpro&fr=pc` +
     `&pdir_fid=${encodeURIComponent(pdirFid)}` +
     '&_page=1&_size=100&_sort=file_type:asc,file_name:asc';
   const data = assertApiSuccess(
-    await quarkRequest(url, 'GET'),
+    await request(url, 'GET'),
     '获取网盘目录列表失败',
   );
   return data?.list || [];
 }
 
-export async function apiCreateFolder(pdirFid, name) {
+export async function apiCreateFolder(
+  pdirFid,
+  name,
+  request = quarkRequest,
+) {
   const url = `${DRIVE_BASE}/1/clouddrive/file?pr=ucpro&fr=pc`;
   const data = assertApiSuccess(
-    await quarkRequest(url, 'POST', {
+    await request(url, 'POST', {
       pdir_fid: pdirFid,
       file_name: name,
       dir: true,
@@ -193,11 +211,44 @@ export async function apiCreateFolder(pdirFid, name) {
   return fid;
 }
 
-export async function ensureGopeedTempFid() {
-  const list = await apiListDir('0');
+export async function ensureGopeedTempFid(request = quarkRequest) {
+  const list = await apiListDir('0', request);
   const found = (list || []).find(
     (item) => item.dir && item.file_name === TEMP_FOLDER_NAME,
   );
   if (found) return found.fid;
-  return apiCreateFolder('0', TEMP_FOLDER_NAME);
+  return apiCreateFolder('0', TEMP_FOLDER_NAME, request);
+}
+
+export function createQuarkApi(request = quarkRequest) {
+  return {
+    apiGetToken: (shareId, passcode) =>
+      apiGetToken(shareId, passcode, request),
+    apiGetDetailPage: (shareId, stoken, pdirFid = '0', page = 1) =>
+      apiGetDetailPage(shareId, stoken, pdirFid, page, request),
+    apiSaveFiles: (
+      shareId,
+      stoken,
+      fidList,
+      fidTokenList,
+      toPdirFid,
+    ) =>
+      apiSaveFiles(
+        shareId,
+        stoken,
+        fidList,
+        fidTokenList,
+        toPdirFid,
+        request,
+      ),
+    apiPollTask: (taskId, fileCount = 1) =>
+      apiPollTask(taskId, fileCount, request),
+    apiGetDownloadLinks: (fids) => apiGetDownloadLinks(fids, request),
+    apiDeleteFiles: (fids) => apiDeleteFiles(fids, request),
+    apiGetAvailableSpace: () => apiGetAvailableSpace(request),
+    apiListDir: (pdirFid) => apiListDir(pdirFid, request),
+    apiCreateFolder: (pdirFid, name) =>
+      apiCreateFolder(pdirFid, name, request),
+    ensureGopeedTempFid: () => ensureGopeedTempFid(request),
+  };
 }
