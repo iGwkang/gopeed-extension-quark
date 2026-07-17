@@ -2,9 +2,9 @@
   "name": "gopeed-extension-quark",
   "author": "Gwkang",
   "title": "夸克网盘下载",
-  "description": "解析夸克网盘分享链接并下载，支持目录递归与转存清理。建议下载连接数 256。",
+  "description": "解析夸克网盘分享链接与自己网盘目录并下载，支持多级目录递归。建议下载连接数 256。",
   "icon": "icon.png",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "homepage": "https://github.com/igwkang/gopeed-extension-quark",
   "repository": {
     "url": "https://github.com/igwkang/gopeed-extension-quark"
@@ -15,7 +15,9 @@
       "match": {
         "urls": [
           "*://pan.quark.cn/s/*",
-          "*://drive.quark.cn/s/*"
+          "*://drive.quark.cn/s/*",
+          "*://pan.quark.cn/list*",
+          "*://drive.quark.cn/list*"
         ]
       },
       "entry": "dist/index.js"

@@ -7,9 +7,14 @@ test('handleResolve 编排分享解析并写入带扩展标签的文件请求', 
   const handler = createResolveHandler({
     getEffectiveCookie: () => '__puus=abc; k=v',
     assertCookieConfigured: (cookie) => calls.push(['cookie', cookie]),
-    parseShareUrl: (url) => {
+    parseQuarkUrl: (url) => {
       calls.push(['url', url]);
-      return { shareId: 'share-1', passcode: '4321', pdirFid: 'dir-1' };
+      return {
+        type: 'share',
+        shareId: 'share-1',
+        passcode: '4321',
+        pdirFid: 'dir-1',
+      };
     },
     apiGetToken: async () => ({ stoken: 'st-1', title: '分享标题' }),
     collectShareFiles: async (options) => {
@@ -52,6 +57,7 @@ test('handleResolve 编排分享解析并写入带扩展标签的文件请求', 
   assert.equal(ctx.res.name, '分享标题');
   assert.deepEqual(ctx.res.files[0].req.labels, {
     'Gwkang@gopeed-extension-quark': '1',
+    source: 'share',
     shareId: 'share-1',
     stoken: 'st-1',
     shareFid: 'sf-1',
@@ -59,6 +65,48 @@ test('handleResolve 编排分享解析并写入带扩展标签的文件请求', 
     fid: 'saved-1',
   });
   assert.equal(ctx.res.files[0].req.extra.header.Cookie, '__puus=abc; k=v');
+});
+
+test('handleResolve 支持自己网盘多级目录链接', async () => {
+  const { createResolveHandler } = await import('../src/quark/resolve.js');
+  const handler = createResolveHandler({
+    getEffectiveCookie: () => '__puus=abc',
+    assertCookieConfigured: () => {},
+    parseQuarkUrl: () => ({
+      type: 'drive',
+      dirFid: '036db22de87b453d84773c2da9ecd5b3',
+      dirName: '新建文件夹',
+    }),
+    collectDriveFiles: async () => ({
+      files: [{ fid: 'f1', file_name: 'a.bin', size: 9, path: '' }],
+      suggestedName: '',
+    }),
+    fetchDriveDownloadFiles: async () => [
+      {
+        name: 'a.bin',
+        size: 9,
+        path: '',
+        url: 'https://dl/a.bin',
+        fid: 'f1',
+      },
+    ],
+  });
+  const ctx = {
+    req: {
+      rawUrl:
+        'https://pan.quark.cn/list#/list/all/c1d9577233b4425b8604dec5b0164769-GopeedTemp/036db22de87b453d84773c2da9ecd5b3-x',
+    },
+    res: null,
+  };
+  globalThis.gopeed = {
+    settings: { max_file_count: '0', delete_file: '1' },
+    logger: { info() {}, error() {} },
+  };
+
+  await handler(ctx);
+  assert.equal(ctx.res.name, '新建文件夹');
+  assert.equal(ctx.res.files[0].req.labels.source, 'drive');
+  assert.equal(ctx.res.files[0].req.labels.fid, 'f1');
 });
 
 test('isDownloadUrlExpired 根据 Expires 和 Range 探活判断', async () => {
@@ -121,6 +169,38 @@ test('handleStart 优先使用保留的 fid 刷新直链', async () => {
 
   assert.equal(ctx.task.meta.req.url, 'https://download/refreshed');
   assert.equal(saveCalled, false);
+});
+
+test('handleStart 自己网盘任务在 fid 刷新失败时不重转存', async () => {
+  const { createStartHandler } = await import('../src/quark/start.js');
+  globalThis.gopeed = {
+    settings: { delete_file: '1' },
+    logger: { warn() {}, error() {} },
+  };
+  const handler = createStartHandler({
+    isDownloadUrlExpired: async () => true,
+    apiGetDownloadLinks: async () => {
+      throw new Error('文件不存在');
+    },
+    apiSaveFiles: async () => {
+      throw new Error('不应转存');
+    },
+  });
+
+  await assert.rejects(
+    () =>
+      handler({
+        task: {
+          meta: {
+            req: {
+              url: 'https://download/expired',
+              labels: { source: 'drive', fid: 'drive-fid-1' },
+            },
+          },
+        },
+      }),
+    /刷新夸克网盘直链失败/,
+  );
 });
 
 test('handleStart 在 fid 不可用时单文件重转存、取链并清理', async () => {

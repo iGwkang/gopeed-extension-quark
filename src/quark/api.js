@@ -180,16 +180,37 @@ export async function apiGetAvailableSpace(request = quarkRequest) {
   }
 }
 
-export async function apiListDir(pdirFid, request = quarkRequest) {
+export async function apiListDirPage(
+  pdirFid,
+  page = 1,
+  request = quarkRequest,
+) {
   const url =
     `${DRIVE_BASE}/1/clouddrive/file/sort?pr=ucpro&fr=pc` +
-    `&pdir_fid=${encodeURIComponent(pdirFid)}` +
-    '&_page=1&_size=100&_sort=file_type:asc,file_name:asc';
+    `&pdir_fid=${encodeURIComponent(pdirFid || '0')}` +
+    `&_page=${page}&_size=${PAGE_SIZE}` +
+    '&_sort=file_type:asc,file_name:asc';
   const data = assertApiSuccess(
     await request(url, 'GET'),
     '获取网盘目录列表失败',
   );
-  return data?.list || [];
+  return {
+    list: data?.list || [],
+    metadata: data?.metadata || {},
+  };
+}
+
+export async function apiListDir(pdirFid, request = quarkRequest) {
+  const items = [];
+  let page = 1;
+  while (true) {
+    const { list } = await apiListDirPage(pdirFid, page, request);
+    items.push(...list);
+    if (list.length < PAGE_SIZE) break;
+    page += 1;
+    if (page > 100) break;
+  }
+  return items;
 }
 
 export async function apiCreateFolder(

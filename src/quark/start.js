@@ -93,10 +93,19 @@ export function createStartHandler(dependencies = {}) {
           return;
         }
       } catch (error) {
+        if (labels.source === 'drive') {
+          throw new Error(
+            `刷新夸克网盘直链失败：${error?.message || error}`,
+          );
+        }
         logger().warn?.(
           `使用原转存文件刷新直链失败，将重新转存：${error?.message || error}`,
         );
       }
+    }
+
+    if (labels.source === 'drive') {
+      throw new Error('刷新夸克网盘直链失败：缺少可用的文件 ID');
     }
 
     const requiredLabels = [
