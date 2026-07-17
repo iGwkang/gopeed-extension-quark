@@ -1,9 +1,10 @@
-// src/index.js
-import { quarkRequest } from './quark/net.js';
+import { handleResolve } from './quark/resolve.js';
+import { handleStart } from './quark/start.js';
 
-// Retain for bundling until resolve wiring lands; unused at runtime.
-gopeed.__quarkRequest = quarkRequest;
+gopeed.events.onResolve(async (ctx) => {
+  await handleResolve(ctx);
+});
 
-gopeed.events.onResolve(async () => {
-  throw new Error('尚未实现');
+gopeed.events.onStart(async (ctx) => {
+  await handleStart(ctx);
 });

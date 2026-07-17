@@ -1,0 +1,66 @@
+{
+  "name": "gopeed-extension-quark",
+  "author": "Gwkang",
+  "title": "夸克网盘下载",
+  "description": "解析夸克网盘分享链接并下载，支持目录递归与转存清理。建议下载连接数 256。",
+  "icon": "icon.png",
+  "version": "1.0.0",
+  "homepage": "https://github.com/igwkang/gopeed-extension-quark",
+  "repository": {
+    "url": "https://github.com/igwkang/gopeed-extension-quark"
+  },
+  "scripts": [
+    {
+      "event": "onResolve",
+      "match": {
+        "urls": [
+          "*://pan.quark.cn/s/*",
+          "*://drive.quark.cn/s/*"
+        ]
+      },
+      "entry": "dist/index.js"
+    },
+    {
+      "event": "onStart",
+      "match": {
+        "labels": [
+          "Gwkang@gopeed-extension-quark"
+        ]
+      },
+      "entry": "dist/index.js"
+    }
+  ],
+  "settings": [
+    {
+      "name": "cookie",
+      "title": "夸克 Cookie",
+      "description": "浏览器登录 pan.quark.cn 后，从 list 请求头复制 Cookie（需包含 __puus）填入。",
+      "type": "string",
+      "value": ""
+    },
+    {
+      "name": "delete_file",
+      "title": "解析完毕后释放网盘空间",
+      "description": "提取直链后自动删除 GopeedTemp 中的本次转存文件。",
+      "type": "string",
+      "value": "1",
+      "options": [
+        {
+          "label": "开启（默认）",
+          "value": "1"
+        },
+        {
+          "label": "关闭",
+          "value": "0"
+        }
+      ]
+    },
+    {
+      "name": "max_file_count",
+      "title": "最大解析文件数量",
+      "description": "限制解析文件数量，0 表示不限制。",
+      "type": "number",
+      "value": "500"
+    }
+  ]
+}
