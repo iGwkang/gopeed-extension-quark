@@ -1,6 +1,6 @@
 {
   "name": "gopeed-extension-quark",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "description": "Gopeed 的夸克网盘分享下载扩展",
   "type": "module",
