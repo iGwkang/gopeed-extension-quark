@@ -96,6 +96,6 @@ Exit code: 0
 
 ### Fix Commit
 
-- **SHA:** `e3e9304`
+- **SHA:** `db17ec8`
 - **Subject:** `fix: check quark cookie expiry before HTTP status`
 - **Branch:** `feature/quark-share-download`
