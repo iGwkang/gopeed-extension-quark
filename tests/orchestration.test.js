@@ -14,7 +14,10 @@ test('handleResolve 编排分享解析并写入带扩展标签的文件请求', 
     apiGetToken: async () => ({ stoken: 'st-1', title: '分享标题' }),
     collectShareFiles: async (options) => {
       calls.push(['walk', options]);
-      return [{ fid: 'sf-1', file_name: 'a.txt', size: 12 }];
+      return {
+        files: [{ fid: 'sf-1', file_name: 'a.txt', size: 12 }],
+        suggestedName: '',
+      };
     },
     apiGetAvailableSpace: async () => 1024,
     processSmartChunks: async (options) => {
