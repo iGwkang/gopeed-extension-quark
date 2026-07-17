@@ -56,7 +56,7 @@ test('关闭删除时按累计容量跳过溢出文件及后续文件', () => {
   );
 });
 
-test('取链先完成全部精确匹配，再进行大小和位置兜底', () => {
+test('取链先完成全部精确匹配，再按大小匹配且不盲目位置兜底', () => {
   const files = [
     { file_name: 'first', size: 10 },
     { file_name: 'exact', size: 10 },
@@ -72,8 +72,17 @@ test('取链先完成全部精确匹配，再进行大小和位置兜底', () =>
 
   assert.deepEqual(
     matchedLinks.map((link) => link?.download_url),
-    ['size-url', 'exact-url', 'position-url'],
+    ['size-url', 'exact-url', undefined],
   );
+});
+
+test('名称和大小均不匹配时不按位置错配直链', () => {
+  const matchedLinks = matchDownloadLinks(
+    [{ file_name: 'wanted', size: 10 }],
+    [{ file_name: 'wrong', size: 99, download_url: 'wrong-url' }],
+  );
+
+  assert.deepEqual(matchedLinks, [undefined]);
 });
 
 test('所有批次均未生成有效直链时抛出中文错误', () => {

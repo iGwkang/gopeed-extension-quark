@@ -12,6 +12,14 @@ function parsePuusFromSetCookie(setCookie) {
   return null;
 }
 
+function parsePuusFromCookie(cookie) {
+  const part = (cookie || '')
+    .split(';')
+    .map((item) => item.trim())
+    .find((item) => item.startsWith('__puus='));
+  return part?.slice('__puus='.length) || null;
+}
+
 export function mergePuusIntoCookie(cookie, setCookie) {
   const puus = parsePuusFromSetCookie(setCookie);
   if (!puus) return cookie;
@@ -40,11 +48,18 @@ export function assertCookieConfigured(cookie) {
 }
 
 export function getEffectiveCookie() {
-  return gopeed.storage.get(STORAGE_COOKIE_KEY) || (gopeed.settings.cookie || '').trim();
+  const settingsCookie = (gopeed.settings.cookie || '').trim();
+  const storedPuus = parsePuusFromCookie(
+    gopeed.storage.get(STORAGE_COOKIE_KEY),
+  );
+  return storedPuus
+    ? mergePuusIntoCookie(settingsCookie, `__puus=${storedPuus}`)
+    : settingsCookie;
 }
 
 export function persistCookie(cookie) {
-  gopeed.storage.set(STORAGE_COOKIE_KEY, cookie);
+  const puus = parsePuusFromCookie(cookie);
+  if (puus) gopeed.storage.set(STORAGE_COOKIE_KEY, `__puus=${puus}`);
 }
 
 export function updatePuusFromSetCookie(setCookie) {

@@ -106,7 +106,6 @@ function matchDownloadLinkIndexes(files, links) {
       link?.file_name === file?.file_name && sameSize(link, file),
   );
   matchRound((file, link) => sameSize(link, file));
-  matchRound(() => true);
 
   return matchedIndexes;
 }
