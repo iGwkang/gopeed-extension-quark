@@ -4,3 +4,5 @@ node_modules/
 .idea/
 .vscode/
 .cursor/
+.superpowers/
+dist/*.LICENSE.txt
