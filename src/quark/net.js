@@ -33,12 +33,12 @@ export async function quarkRequest(url, method, data = {}, retryCount = 0) {
 
     updatePuusFromSetCookie(response.headers['set-cookie']);
 
-    if (response.status >= 400) {
-      throw new Error(`HTTP ${response.status}`);
-    }
     const body = response.body || {};
     if (body.code === 40001 || body.code === 10000) {
       throw new Error(`Cookie 已失效或登录过期，请重新获取（代码: ${body.code}）`);
+    }
+    if (response.status >= 400) {
+      throw new Error(`HTTP ${response.status}`);
     }
     return body;
   } catch (err) {
