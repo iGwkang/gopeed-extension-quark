@@ -80,26 +80,48 @@ function sameSize(left, right) {
   return Number(left?.size) === Number(right?.size);
 }
 
-function takeMatchingLink(file, links, usedIndexes) {
-  let index = links.findIndex(
-    (link, candidateIndex) =>
-      !usedIndexes.has(candidateIndex) &&
-      link?.file_name === file.file_name &&
-      sameSize(link, file),
+function matchDownloadLinkIndexes(files, links) {
+  const sourceFiles = Array.isArray(files) ? files : [];
+  const downloadLinks = Array.isArray(links) ? links : [];
+  const matchedIndexes = Array(sourceFiles.length).fill(-1);
+  const usedIndexes = new Set();
+
+  const matchRound = (predicate) => {
+    for (let sourceIndex = 0; sourceIndex < sourceFiles.length; sourceIndex += 1) {
+      if (matchedIndexes[sourceIndex] >= 0) continue;
+      const linkIndex = downloadLinks.findIndex(
+        (link, candidateIndex) =>
+          !usedIndexes.has(candidateIndex) &&
+          predicate(sourceFiles[sourceIndex], link),
+      );
+      if (linkIndex >= 0) {
+        matchedIndexes[sourceIndex] = linkIndex;
+        usedIndexes.add(linkIndex);
+      }
+    }
+  };
+
+  matchRound(
+    (file, link) =>
+      link?.file_name === file?.file_name && sameSize(link, file),
   );
-  if (index < 0) {
-    index = links.findIndex(
-      (link, candidateIndex) =>
-        !usedIndexes.has(candidateIndex) && sameSize(link, file),
-    );
+  matchRound((file, link) => sameSize(link, file));
+  matchRound(() => true);
+
+  return matchedIndexes;
+}
+
+export function matchDownloadLinks(files, links) {
+  const downloadLinks = Array.isArray(links) ? links : [];
+  return matchDownloadLinkIndexes(files, downloadLinks).map((index) =>
+    index >= 0 ? downloadLinks[index] : undefined,
+  );
+}
+
+export function assertHasParsedFiles(finalParsedFiles) {
+  if (!Array.isArray(finalParsedFiles) || finalParsedFiles.length === 0) {
+    throw new Error('提取失败，转存任务未生成有效直链');
   }
-  if (index < 0) {
-    index = links.findIndex(
-      (_link, candidateIndex) => !usedIndexes.has(candidateIndex),
-    );
-  }
-  if (index >= 0) usedIndexes.add(index);
-  return index;
 }
 
 export async function processSmartChunks(options) {
@@ -136,11 +158,11 @@ export async function processSmartChunks(options) {
       );
       savedFids = await apiPollTask(taskId, chunk.length);
       const links = await apiGetDownloadLinks(savedFids);
-      const usedLinkIndexes = new Set();
+      const matchedLinkIndexes = matchDownloadLinkIndexes(chunk, links);
 
       for (let sourceIndex = 0; sourceIndex < chunk.length; sourceIndex += 1) {
         const file = chunk[sourceIndex];
-        const linkIndex = takeMatchingLink(file, links, usedLinkIndexes);
+        const linkIndex = matchedLinkIndexes[sourceIndex];
         const link = linkIndex >= 0 ? links[linkIndex] : undefined;
         if (!link?.download_url) {
           logger().error?.(`文件“${file.file_name}”未获取到下载链接`);
@@ -165,5 +187,6 @@ export async function processSmartChunks(options) {
     }
   }
 
+  assertHasParsedFiles(finalParsedFiles);
   return { finalParsedFiles, skippedCount };
 }
