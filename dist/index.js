@@ -1,0 +1,1 @@
+(()=>{"use strict";gopeed.events.onResolve(async function(){throw new Error("尚未实现")})})();
