@@ -8,6 +8,7 @@ import {
   PAN_ORIGIN,
   USER_AGENT,
 } from './constants.js';
+import { throwUserError } from './errors.js';
 import { processSmartChunks } from './transfer.js';
 import { parseShareUrl } from './url.js';
 import { collectShareFiles } from './walk.js';
@@ -72,7 +73,9 @@ export function createResolveHandler(dependencies = {}) {
       const { shareId, passcode, pdirFid } = deps.parseShareUrl(rawUrl);
       const tokenData = await deps.apiGetToken(shareId, passcode);
       const stoken = tokenData?.stoken;
-      if (!stoken) throw new Error('获取分享访问令牌失败：响应中缺少 stoken');
+      if (!stoken) {
+        throwUserError('获取分享访问令牌失败：响应中缺少 stoken');
+      }
 
       const walkResult = await deps.collectShareFiles({
         shareId,
@@ -82,7 +85,7 @@ export function createResolveHandler(dependencies = {}) {
       });
       const files = walkResult?.files || walkResult || [];
       const suggestedName = walkResult?.suggestedName || '';
-      if (files.length === 0) throw new Error('分享中没有可下载的文件');
+      if (files.length === 0) throwUserError('分享中没有可下载的文件');
 
       const availableSpace = await deps.apiGetAvailableSpace();
       const { finalParsedFiles } = await deps.processSmartChunks({
@@ -133,7 +136,11 @@ export function createResolveHandler(dependencies = {}) {
     } catch (error) {
       const message = error?.message || String(error);
       logger().error?.(`夸克分享解析失败：${message}`);
-      throw new Error(message);
+      // 已是 MessageError 则原样抛出，避免被包装成普通 Error 后回退到默认下载页
+      if (typeof MessageError === 'function' && error instanceof MessageError) {
+        throw error;
+      }
+      throwUserError(message);
     }
   };
 }

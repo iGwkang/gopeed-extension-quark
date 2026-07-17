@@ -4,7 +4,7 @@
   "title": "夸克网盘下载",
   "description": "解析夸克网盘分享链接并下载，支持目录递归与转存清理。建议下载连接数 256。",
   "icon": "icon.png",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "homepage": "https://github.com/igwkang/gopeed-extension-quark",
   "repository": {
     "url": "https://github.com/igwkang/gopeed-extension-quark"

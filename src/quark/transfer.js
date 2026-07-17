@@ -80,9 +80,10 @@ function sameSize(left, right) {
   return Number(left?.size) === Number(right?.size);
 }
 
-function matchDownloadLinkIndexes(files, links) {
+function matchDownloadLinkIndexes(files, links, savedFids = []) {
   const sourceFiles = Array.isArray(files) ? files : [];
   const downloadLinks = Array.isArray(links) ? links : [];
+  const fids = Array.isArray(savedFids) ? savedFids : [];
   const matchedIndexes = Array(sourceFiles.length).fill(-1);
   const usedIndexes = new Set();
 
@@ -92,7 +93,7 @@ function matchDownloadLinkIndexes(files, links) {
       const linkIndex = downloadLinks.findIndex(
         (link, candidateIndex) =>
           !usedIndexes.has(candidateIndex) &&
-          predicate(sourceFiles[sourceIndex], link),
+          predicate(sourceFiles[sourceIndex], link, sourceIndex),
       );
       if (linkIndex >= 0) {
         matchedIndexes[sourceIndex] = linkIndex;
@@ -106,14 +107,32 @@ function matchDownloadLinkIndexes(files, links) {
       link?.file_name === file?.file_name && sameSize(link, file),
   );
   matchRound((file, link) => sameSize(link, file));
+  matchRound((file, link, sourceIndex) => {
+    const fid = fids[sourceIndex];
+    return Boolean(fid && link?.fid === fid && link?.download_url);
+  });
+
+  // 夸克 download 接口通常按请求 fids 顺序返回；等长时对剩余项按索引对齐
+  if (downloadLinks.length === sourceFiles.length) {
+    for (let sourceIndex = 0; sourceIndex < sourceFiles.length; sourceIndex += 1) {
+      if (matchedIndexes[sourceIndex] >= 0) continue;
+      if (
+        !usedIndexes.has(sourceIndex) &&
+        downloadLinks[sourceIndex]?.download_url
+      ) {
+        matchedIndexes[sourceIndex] = sourceIndex;
+        usedIndexes.add(sourceIndex);
+      }
+    }
+  }
 
   return matchedIndexes;
 }
 
-export function matchDownloadLinks(files, links) {
+export function matchDownloadLinks(files, links, savedFids = []) {
   const downloadLinks = Array.isArray(links) ? links : [];
-  return matchDownloadLinkIndexes(files, downloadLinks).map((index) =>
-    index >= 0 ? downloadLinks[index] : undefined,
+  return matchDownloadLinkIndexes(files, downloadLinks, savedFids).map(
+    (index) => (index >= 0 ? downloadLinks[index] : undefined),
   );
 }
 
@@ -157,14 +176,25 @@ export async function processSmartChunks(options) {
       );
       savedFids = await apiPollTask(taskId, chunk.length);
       const links = await apiGetDownloadLinks(savedFids);
-      const matchedLinkIndexes = matchDownloadLinkIndexes(chunk, links);
+      if (!Array.isArray(links) || links.length === 0) {
+        throw new Error(
+          `获取直链返回为空（本批 ${chunk.length} 个文件，转存 fid ${savedFids.length} 个）`,
+        );
+      }
+      const matchedLinkIndexes = matchDownloadLinkIndexes(
+        chunk,
+        links,
+        savedFids,
+      );
 
       for (let sourceIndex = 0; sourceIndex < chunk.length; sourceIndex += 1) {
         const file = chunk[sourceIndex];
         const linkIndex = matchedLinkIndexes[sourceIndex];
         const link = linkIndex >= 0 ? links[linkIndex] : undefined;
         if (!link?.download_url) {
-          logger().error?.(`文件“${file.file_name}”未获取到下载链接`);
+          logger().error?.(
+            `文件“${file.file_name}”未获取到下载链接（接口返回 ${links.length} 条）`,
+          );
           continue;
         }
         finalParsedFiles.push({
