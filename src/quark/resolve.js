@@ -8,9 +8,11 @@ import {
   PAN_ORIGIN,
   USER_AGENT,
 } from './constants.js';
+import { fetchDriveDownloadFiles } from './driveDownload.js';
+import { collectDriveFiles } from './driveWalk.js';
 import { throwUserError } from './errors.js';
 import { processSmartChunks } from './transfer.js';
-import { parseShareUrl } from './url.js';
+import { parseQuarkUrl } from './url.js';
 import { collectShareFiles } from './walk.js';
 
 function readMaxFileCount() {
@@ -51,13 +53,41 @@ export function stripRedundantRootPath(rootName, files) {
   });
 }
 
+function buildFileEntries(taskName, files, extraLabelsFactory, cookie) {
+  const normalizedFiles = stripRedundantRootPath(taskName, files);
+  return {
+    name: taskName,
+    files: normalizedFiles.map((item) => ({
+      name: item.name,
+      size: item.size,
+      path: item.path || '',
+      req: {
+        url: item.url,
+        labels: {
+          [EXTENSION_LABEL]: '1',
+          ...extraLabelsFactory(item),
+        },
+        extra: {
+          header: {
+            'User-Agent': USER_AGENT,
+            Cookie: cookie,
+            Referer: `${PAN_ORIGIN}/`,
+          },
+        },
+      },
+    })),
+  };
+}
+
 const defaultDependencies = {
   apiGetAvailableSpace,
   apiGetToken,
   assertCookieConfigured,
+  collectDriveFiles,
   collectShareFiles,
+  fetchDriveDownloadFiles,
   getEffectiveCookie,
-  parseShareUrl,
+  parseQuarkUrl,
   processSmartChunks,
 };
 
@@ -70,7 +100,39 @@ export function createResolveHandler(dependencies = {}) {
       const cookie = deps.getEffectiveCookie();
       deps.assertCookieConfigured(cookie);
 
-      const { shareId, passcode, pdirFid } = deps.parseShareUrl(rawUrl);
+      const parsed = deps.parseQuarkUrl(rawUrl);
+
+      if (parsed.type === 'drive') {
+        const walkResult = await deps.collectDriveFiles({
+          dirFid: parsed.dirFid,
+          maxCount: readMaxFileCount(),
+        });
+        const files = walkResult?.files || [];
+        if (files.length === 0) {
+          throwUserError('网盘目录中没有可下载的文件');
+        }
+        const finalParsedFiles = await deps.fetchDriveDownloadFiles(files);
+        const taskName =
+          walkResult?.suggestedName ||
+          parsed.dirName ||
+          parsed.dirFid ||
+          'quark-drive';
+        ctx.res = buildFileEntries(
+          taskName,
+          finalParsedFiles,
+          (item) => ({
+            source: 'drive',
+            fid: item.fid || '',
+          }),
+          cookie,
+        );
+        logger().info?.(
+          `夸克网盘目录解析完成，共 ${ctx.res.files.length} 个文件`,
+        );
+        return;
+      }
+
+      const { shareId, passcode, pdirFid } = parsed;
       const tokenData = await deps.apiGetToken(shareId, passcode);
       const stoken = tokenData?.stoken;
       if (!stoken) {
@@ -95,48 +157,28 @@ export function createResolveHandler(dependencies = {}) {
         availableSpace,
         shouldDelete: shouldDeleteTransferredFiles(),
       });
-      const effectiveCookie = deps.getEffectiveCookie();
       const taskName =
         suggestedName ||
         tokenData?.title ||
         tokenData?.share_name ||
         shareId;
-      const normalizedFiles = stripRedundantRootPath(
+      ctx.res = buildFileEntries(
         taskName,
         finalParsedFiles,
+        (item) => ({
+          source: 'share',
+          shareId,
+          stoken,
+          shareFid: item.shareFid,
+          shareFidToken: item.shareFidToken,
+          fid: item.savedFid || item.fid || '',
+        }),
+        cookie,
       );
-
-      ctx.res = {
-        name: taskName,
-        files: normalizedFiles.map((item) => ({
-          name: item.name,
-          size: item.size,
-          path: item.path || '',
-          req: {
-            url: item.url,
-            labels: {
-              [EXTENSION_LABEL]: '1',
-              shareId,
-              stoken,
-              shareFid: item.shareFid,
-              shareFidToken: item.shareFidToken,
-              fid: item.savedFid || '',
-            },
-            extra: {
-              header: {
-                'User-Agent': USER_AGENT,
-                Cookie: effectiveCookie,
-                Referer: `${PAN_ORIGIN}/`,
-              },
-            },
-          },
-        })),
-      };
       logger().info?.(`夸克分享解析完成，共 ${ctx.res.files.length} 个文件`);
     } catch (error) {
       const message = error?.message || String(error);
-      logger().error?.(`夸克分享解析失败：${message}`);
-      // 已是 MessageError 则原样抛出，避免被包装成普通 Error 后回退到默认下载页
+      logger().error?.(`夸克解析失败：${message}`);
       if (typeof MessageError === 'function' && error instanceof MessageError) {
         throw error;
       }
